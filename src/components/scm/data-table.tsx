@@ -82,7 +82,7 @@ export function DataTable<T extends { id: string }>({
                 <th key={c.key} className={`px-4 py-3 font-medium ${c.align === "right" ? "text-right" : "text-left"}`}>
                   {c.sortValue ? (
                     <button
-                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-foreground"
                       onClick={() => setSort((s) => ({ key: c.key, dir: s?.key === c.key && s.dir === 1 ? -1 : 1 }))}
                     >
                       {c.header}<ArrowUpDown className="h-3 w-3" />
