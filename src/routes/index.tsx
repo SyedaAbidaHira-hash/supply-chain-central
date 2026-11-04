@@ -1,10 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { PageHeader, StatCard, Mono } from "@/components/scm/data-table";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { PageHeader, StatCard, Mono, LoadError } from "@/components/scm/data-table";
 import { StatusBadge } from "@/components/scm/status";
 import { Progress } from "@/components/ui/progress";
-import {
-  suppliers, products, warehouses, orders, inventory, stockStatus, productById, warehouseById, money, num,
-} from "@/lib/mock-data";
+import { scmQuery, stockStatus, money, fmt } from "@/lib/scm.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -15,35 +14,38 @@ export const Route = createFileRoute("/")({
       { property: "og:description", content: "At-a-glance view of orders, stock levels and warehouse capacity." },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(scmQuery),
+  errorComponent: LoadError,
   component: Index,
 });
 
 function Index() {
-  const revenue = orders.filter((o) => o.status !== "Cancelled").reduce((a, o) => a + o.total, 0);
-  const lowStock = inventory.filter((i) => stockStatus(i) !== "In Stock");
+  const { data } = useSuspenseQuery(scmQuery);
+  const spend = data.orders.reduce((a, o) => a + o.total, 0);
+  const alerts = data.inventory.filter((i) => stockStatus(i.qty) !== "In Stock");
+  const topWh = [...data.warehouses].sort((a, b) => b.stored / b.capacity - a.stored / a.capacity).slice(0, 6);
+  const recent = [...data.orders].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   return (
     <div className="space-y-8">
-      <PageHeader title="Overview" description="Your supply network at a glance." />
+      <PageHeader title="Overview" description="Live from your supply chain database." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active suppliers" value={suppliers.filter((s) => s.status === "Active").length} hint={`${suppliers.length} total`} />
-        <StatCard label="Products" value={products.length} hint="Across 6 categories" />
-        <StatCard label="Order value (30d)" value={money(revenue)} hint={`${orders.length} orders`} />
-        <StatCard label="Stock alerts" value={lowStock.length} hint="Low or out of stock" />
+        <StatCard label="Suppliers" value={data.suppliers.length} />
+        <StatCard label="Products" value={data.products.length} />
+        <StatCard label="Purchase spend" value={money(spend)} hint={`${data.orders.length} orders`} />
+        <StatCard label="Stock alerts" value={alerts.length} hint="Low or out of stock" />
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border bg-card p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Warehouse capacity</h2>
+            <h2 className="text-lg font-semibold">Busiest warehouses</h2>
             <Link to="/warehouses" className="text-sm text-primary hover:underline">View all</Link>
           </div>
           <div className="space-y-4">
-            {warehouses.map((w) => {
-              const pct = Math.round((w.used / w.capacity) * 100);
+            {topWh.map((w) => {
+              const pct = w.capacity ? Math.min(100, Math.round((w.stored / w.capacity) * 100)) : 0;
               return (
                 <div key={w.id}>
-                  <div className="mb-1 flex justify-between text-sm">
-                    <span>{w.name}</span><span className="tabular-nums text-muted-foreground">{pct}%</span>
-                  </div>
+                  <div className="mb-1 flex justify-between text-sm"><span>{w.name}</span><span className="tabular-nums text-muted-foreground">{fmt(w.stored)} / {fmt(w.capacity)}</span></div>
                   <Progress value={pct} />
                 </div>
               );
@@ -56,15 +58,13 @@ function Index() {
             <Link to="/inventory" className="text-sm text-primary hover:underline">View inventory</Link>
           </div>
           <ul className="divide-y">
-            {lowStock.map((i) => (
+            {alerts.slice(0, 6).map((i) => (
               <li key={i.id} className="flex items-center justify-between py-3 text-sm">
-                <div>
-                  <p className="font-medium">{productById(i.productId)?.name}</p>
-                  <Mono>{warehouseById(i.warehouseId)?.name} · {num(i.onHand)} on hand</Mono>
-                </div>
-                <StatusBadge status={stockStatus(i)} />
+                <div><p className="font-medium">{i.product}</p><Mono>{i.warehouse} · {fmt(i.qty)} on hand</Mono></div>
+                <StatusBadge status={stockStatus(i.qty)} />
               </li>
             ))}
+            {alerts.length === 0 && <li className="py-3 text-sm text-muted-foreground">All stock levels healthy.</li>}
           </ul>
         </section>
       </div>
@@ -74,10 +74,10 @@ function Index() {
           <Link to="/orders" className="text-sm text-primary hover:underline">View all</Link>
         </div>
         <ul className="divide-y">
-          {orders.slice(0, 5).map((o) => (
+          {recent.map((o) => (
             <li key={o.id} className="flex items-center justify-between py-3 text-sm">
-              <div><p className="font-medium">{o.customer}</p><Mono>{o.id} · {o.date}</Mono></div>
-              <div className="flex items-center gap-4"><span className="tabular-nums">{money(o.total)}</span><StatusBadge status={o.status} /></div>
+              <div><p className="font-medium">{o.supplier}</p><Mono>Order #{o.orderId} · {o.date}</Mono></div>
+              <span className="tabular-nums">{money(o.total)}</span>
             </li>
           ))}
         </ul>

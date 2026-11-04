@@ -1,65 +1,57 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DataTable, DetailList, PageHeader, Mono } from "@/components/scm/data-table";
-import { StatusBadge } from "@/components/scm/status";
-import { orders, warehouseById, money, num, type Order } from "@/lib/mock-data";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { DataTable, DetailList, PageHeader, LoadError } from "@/components/scm/data-table";
+import { scmQuery, money, fmt, type Order } from "@/lib/scm.functions";
 
 export const Route = createFileRoute("/orders")({
   head: () => ({
     meta: [
       { title: "Orders — Freightline" },
-      { name: "description", content: "Customer orders, fulfillment status and carriers." },
+      { name: "description", content: "Purchase orders placed with suppliers and their line items." },
       { property: "og:title", content: "Orders — Freightline" },
-      { property: "og:description", content: "Customer orders, fulfillment status and carriers." },
+      { property: "og:description", content: "Purchase orders placed with suppliers and their line items." },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(scmQuery),
+  errorComponent: LoadError,
   component: OrdersPage,
 });
 
-const steps: Order["status"][] = ["Pending", "Processing", "Shipped", "Delivered"];
-
 function OrdersPage() {
+  const { data } = useSuspenseQuery(scmQuery);
   return (
     <>
-      <PageHeader title="Orders" description="Outbound customer orders and their fulfillment." />
+      <PageHeader title="Orders" description="Purchase orders placed with suppliers." />
       <DataTable<Order>
-        rows={orders}
-        searchPlaceholder="Search by order ID, customer, carrier…"
-        searchText={(o) => `${o.id} ${o.customer} ${o.carrier} ${warehouseById(o.warehouseId)?.name}`}
-        filter={{ label: "Statuses", options: [...steps, "Cancelled"], value: (o) => o.status }}
+        rows={data.orders}
+        searchPlaceholder="Search by order number, supplier, product…"
+        searchText={(o) => `${o.orderId} ${o.supplier} ${o.date} ${o.lines.map((l) => l.product).join(" ")}`}
         columns={[
-          { key: "id", header: "Order", sortValue: (o) => o.id, cell: (o) => <span className="font-mono text-xs font-medium">{o.id}</span> },
-          { key: "cust", header: "Customer", sortValue: (o) => o.customer, cell: (o) => <span className="font-medium">{o.customer}</span> },
+          { key: "id", header: "Order", sortValue: (o) => o.orderId, cell: (o) => <span className="font-mono text-xs font-medium">#{o.orderId}</span> },
+          { key: "sup", header: "Supplier", sortValue: (o) => o.supplier, cell: (o) => <span className="font-medium">{o.supplier}</span> },
           { key: "date", header: "Date", sortValue: (o) => o.date, cell: (o) => o.date },
-          { key: "wh", header: "Warehouse", cell: (o) => warehouseById(o.warehouseId)?.name },
-          { key: "items", header: "Items", align: "right", sortValue: (o) => o.items, cell: (o) => num(o.items) },
+          { key: "lines", header: "Items", align: "right", sortValue: (o) => o.lines.reduce((a, l) => a + l.quantity, 0), cell: (o) => fmt(o.lines.reduce((a, l) => a + l.quantity, 0)) },
           { key: "total", header: "Total", align: "right", sortValue: (o) => o.total, cell: (o) => money(o.total) },
-          { key: "status", header: "Status", cell: (o) => <StatusBadge status={o.status} /> },
         ]}
-        detailTitle={(o) => o.customer}
-        detailSubtitle={(o) => `${o.id} · ${o.date}`}
-        renderDetail={(o) => {
-          const at = steps.indexOf(o.status);
-          return (
-            <>
-              {o.status !== "Cancelled" && (
-                <ol className="flex gap-2">
-                  {steps.map((s, i) => (
-                    <li key={s} className="flex-1">
-                      <div className={`h-1.5 rounded-full ${i <= at ? "bg-primary" : "bg-muted"}`} />
-                      <p className={`mt-1.5 text-xs ${i <= at ? "text-foreground" : "text-muted-foreground"}`}>{s}</p>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              <DetailList items={[
-                ["Status", <StatusBadge status={o.status} />],
-                ["Ship from", warehouseById(o.warehouseId)?.name], ["Carrier", o.carrier],
-                ["Items", num(o.items)], ["Order total", money(o.total)],
-              ]} />
-              <Mono>Tracking: {o.carrier.slice(0, 3).toUpperCase()}-{o.id.replace("ORD-", "")}-7781</Mono>
-            </>
-          );
-        }}
+        detailTitle={(o) => `Order #${o.orderId}`}
+        detailSubtitle={(o) => `${o.supplier} · ${o.date}`}
+        renderDetail={(o) => (
+          <>
+            <DetailList items={[["Supplier", o.supplier], ["Date", o.date], ["Order total", money(o.total)]]} />
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Line items ({o.lines.length})</h3>
+              <ul className="divide-y rounded-lg border text-sm">
+                {o.lines.map((l, i) => (
+                  <li key={i} className="flex justify-between gap-4 px-4 py-2.5">
+                    <span>{l.product}</span>
+                    <span className="tabular-nums text-muted-foreground">{fmt(l.quantity)} × {money(l.unitPrice)}</span>
+                  </li>
+                ))}
+                {o.lines.length === 0 && <li className="px-4 py-2.5 text-muted-foreground">No line items</li>}
+              </ul>
+            </div>
+          </>
+        )}
       />
     </>
   );

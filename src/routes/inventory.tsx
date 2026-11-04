@@ -1,51 +1,49 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DataTable, DetailList, PageHeader, Mono } from "@/components/scm/data-table";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { DataTable, DetailList, PageHeader, Mono, LoadError } from "@/components/scm/data-table";
 import { StatusBadge } from "@/components/scm/status";
-import { inventory, productById, warehouseById, stockStatus, money, num, type InventoryItem } from "@/lib/mock-data";
+import { scmQuery, money, fmt, stockStatus, LOW_STOCK, type InventoryRow } from "@/lib/scm.functions";
 
 export const Route = createFileRoute("/inventory")({
   head: () => ({
     meta: [
       { title: "Inventory — Freightline" },
-      { name: "description", content: "Stock on hand, reservations and reorder alerts across warehouses." },
+      { name: "description", content: "Stock quantities per product and warehouse." },
       { property: "og:title", content: "Inventory — Freightline" },
-      { property: "og:description", content: "Stock on hand, reservations and reorder alerts across warehouses." },
+      { property: "og:description", content: "Stock quantities per product and warehouse." },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(scmQuery),
+  errorComponent: LoadError,
   component: InventoryPage,
 });
 
 function InventoryPage() {
+  const { data } = useSuspenseQuery(scmQuery);
   return (
     <>
-      <PageHeader title="Inventory" description="Stock levels per product and location." />
-      <DataTable<InventoryItem>
-        rows={inventory}
-        searchPlaceholder="Search by product, SKU, warehouse…"
-        searchText={(i) => `${i.id} ${productById(i.productId)?.name} ${productById(i.productId)?.sku} ${warehouseById(i.warehouseId)?.name}`}
-        filter={{ label: "Stock levels", options: ["In Stock", "Low Stock", "Out of Stock"], value: stockStatus }}
+      <PageHeader title="Inventory" description={`Stock per product and location. Low stock means ${LOW_STOCK} units or fewer.`} />
+      <DataTable<InventoryRow>
+        rows={data.inventory}
+        searchPlaceholder="Search by product, category, warehouse…"
+        searchText={(i) => `${i.productId} ${i.product} ${i.category} ${i.warehouse}`}
+        filter={{ label: "Stock levels", options: ["In Stock", "Low Stock", "Out of Stock"], value: (i) => stockStatus(i.qty) }}
         columns={[
-          { key: "prod", header: "Product", sortValue: (i) => productById(i.productId)?.name ?? "", cell: (i) => <div><p className="font-medium">{productById(i.productId)?.name}</p><Mono>{productById(i.productId)?.sku}</Mono></div> },
-          { key: "wh", header: "Warehouse", cell: (i) => warehouseById(i.warehouseId)?.name },
-          { key: "on", header: "On hand", align: "right", sortValue: (i) => i.onHand, cell: (i) => num(i.onHand) },
-          { key: "avail", header: "Available", align: "right", sortValue: (i) => i.onHand - i.reserved, cell: (i) => num(i.onHand - i.reserved) },
-          { key: "rp", header: "Reorder at", align: "right", cell: (i) => num(i.reorderPoint) },
-          { key: "status", header: "Status", cell: (i) => <StatusBadge status={stockStatus(i)} /> },
+          { key: "prod", header: "Product", sortValue: (i) => i.product, cell: (i) => <div><p className="font-medium">{i.product}</p><Mono>#{i.productId} · {i.category}</Mono></div> },
+          { key: "wh", header: "Warehouse", sortValue: (i) => i.warehouse, cell: (i) => i.warehouse },
+          { key: "qty", header: "Quantity", align: "right", sortValue: (i) => i.qty, cell: (i) => fmt(i.qty) },
+          { key: "val", header: "Value", align: "right", sortValue: (i) => i.qty * i.price, cell: (i) => money(i.qty * i.price) },
+          { key: "status", header: "Status", cell: (i) => <StatusBadge status={stockStatus(i.qty)} /> },
         ]}
-        detailTitle={(i) => productById(i.productId)?.name ?? i.id}
-        detailSubtitle={(i) => `${i.id} · ${warehouseById(i.warehouseId)?.name}`}
-        renderDetail={(i) => {
-          const p = productById(i.productId);
-          return (
-            <DetailList items={[
-              ["Status", <StatusBadge status={stockStatus(i)} />],
-              ["On hand", num(i.onHand)], ["Reserved", num(i.reserved)],
-              ["Available", num(i.onHand - i.reserved)], ["Reorder point", num(i.reorderPoint)],
-              ["Stock value", p ? money(i.onHand * p.unitCost) : "—"],
-              ["Last restock", i.lastRestock],
-            ]} />
-          );
-        }}
+        detailTitle={(i) => i.product}
+        detailSubtitle={(i) => i.warehouse}
+        renderDetail={(i) => (
+          <DetailList items={[
+            ["Status", <StatusBadge status={stockStatus(i.qty)} />],
+            ["Category", i.category], ["Warehouse", i.warehouse],
+            ["Quantity", fmt(i.qty)], ["Unit price", money(i.price)], ["Stock value", money(i.qty * i.price)],
+          ]} />
+        )}
       />
     </>
   );

@@ -164,3 +164,12 @@ export function StatCard({ label, value, hint }: { label: string; value: ReactNo
 export function Mono({ children }: { children: ReactNode }) {
   return <span className="font-mono text-xs text-muted-foreground">{children}</span>;
 }
+
+export function LoadError({ error }: { error: unknown }) {
+  return (
+    <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive">
+      <p className="font-semibold">Couldn't load data from your database.</p>
+      <p className="mt-1">{error instanceof Error ? error.message : String(error)}</p>
+    </div>
+  );
+}
