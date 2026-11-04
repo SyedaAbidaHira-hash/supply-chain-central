@@ -6,7 +6,7 @@ export async function query<T>(sql: string): Promise<T[]> {
     host: "mysql-1343ec91-project-42b0.j.aivencloud.com",
     port: 27753,
     user: "avnadmin",
-    password: process.env["MYSQL_PASSWORD"],
+    password: process.env["MYSQL_PASSWORD"] ?? "",
     database: "pgd_supplychain",
     ssl: { rejectUnauthorized: false },
     connectTimeout: 15000,
