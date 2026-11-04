@@ -10,16 +10,24 @@ export type Order = { id: string; orderId: number; supplier: string; date: strin
 export type InventoryRow = { id: string; product: string; productId: number; category: string; price: number; warehouse: string; warehouseId: number; qty: number };
 export type ScmData = { suppliers: Supplier[]; products: Product[]; warehouses: Warehouse[]; orders: Order[]; inventory: InventoryRow[] };
 
+type U = unknown;
+type SupRow = { Supplier_ID: U; Supplier_Name: U; phone: U; Email: U; Address: U };
+type ProdRow = { Product_ID: U; Product_Name: U; Category: U; Price: U };
+type WhRow = { Warehouse_ID: U; warehouse_name: U; Location: U; Capacity: U };
+type OrdRow = { order_id: U; supplier_id: U; order_date: U; total_amount: U };
+type DetRow = { order_id: U; product_id: U; quantity: U; unit_price: U };
+type InvRow = { warehouse_id: U; product_id: U; stock_quantity: U };
+
 const num = (v: unknown) => Number(v ?? 0);
 
 export const getScmData = createServerFn({ method: "GET" }).handler(async (): Promise<ScmData> => {
   const [sup, prod, wh, ord, det, inv] = await Promise.all([
-    query<Record<string, unknown>>("SELECT * FROM supplier"),
-    query<Record<string, unknown>>("SELECT * FROM product"),
-    query<Record<string, unknown>>("SELECT * FROM warehouse"),
-    query<Record<string, unknown>>("SELECT * FROM orders"),
-    query<Record<string, unknown>>("SELECT * FROM order_detail"),
-    query<Record<string, unknown>>("SELECT * FROM inventory"),
+    query<SupRow>("SELECT * FROM supplier"),
+    query<ProdRow>("SELECT * FROM product"),
+    query<WhRow>("SELECT * FROM warehouse"),
+    query<OrdRow>("SELECT * FROM orders"),
+    query<DetRow>("SELECT * FROM order_detail"),
+    query<InvRow>("SELECT * FROM inventory"),
   ]);
   const prodName = new Map(prod.map((p) => [num(p.Product_ID), String(p.Product_Name)]));
   const whName = new Map(wh.map((w) => [num(w.Warehouse_ID), String(w.warehouse_name)]));
